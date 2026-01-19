@@ -327,11 +327,11 @@ struct ClockFace: View {
     }
 
     private var ringSpacing: CGFloat {
-        strokeWidth * 1.8
+        strokeWidth * 1.4
     }
 
     private var innerRadius: CGFloat {
-        minDimension * 0.12
+        minDimension * 0.08
     }
 
     var body: some View {
