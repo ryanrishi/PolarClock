@@ -2,6 +2,8 @@
 
 A modern macOS screen saver featuring a polar clock visualization with smooth animations.
 
+![PolarClock demo](PolarClock.gif)
+
 ## Features
 
 - 6 concentric rings representing time units (month, day, weekday, hours, minutes, seconds)
