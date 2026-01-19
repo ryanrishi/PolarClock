@@ -25,7 +25,7 @@ jobs:
 
       - name: Package screen saver
         run: |
-          DERIVED_DATA=$(xcodebuild -scheme PolarClock -showBuildSettings | grep -m 1 "BUILT_PRODUCTS_DIR" | awk '{print $3}')
+          DERIVED_DATA=$(xcodebuild -scheme PolarClock -configuration Release -showBuildSettings | grep -m 1 "BUILT_PRODUCTS_DIR" | awk '{print $3}')
           cp -R "$DERIVED_DATA/PolarClock.saver" ./PolarClock.saver
 
       - name: Upload artifact
