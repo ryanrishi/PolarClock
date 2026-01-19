@@ -101,6 +101,62 @@ struct TimeCalculator {
     }
 }
 
+// MARK: - Clock Animation State
+
+class ClockAnimationState: ObservableObject {
+    struct RingState {
+        var previousProgress: Double = 0
+        var isSnappingBack: Bool = false
+        var snapBackStartTime: Date?
+        var snapBackStartProgress: Double = 0  // The real progress when snap-back started
+    }
+
+    private var ringStates: [RingState] = Array(repeating: RingState(), count: 6)
+
+    private let snapBackDuration: Double = 0.5  // seconds
+
+    func getDisplayProgress(ringIndex: Int, realProgress: Double, currentTime: Date) -> Double {
+        guard ringIndex >= 0 && ringIndex < ringStates.count else { return realProgress }
+
+        var state = ringStates[ringIndex]
+        var displayProgress = realProgress
+
+        // Detect wrap-around: progress dropped significantly (e.g., 0.98 -> 0.02)
+        if realProgress < 0.1 && state.previousProgress > 0.9 && !state.isSnappingBack {
+            // Start snap-back animation
+            state.isSnappingBack = true
+            state.snapBackStartTime = currentTime
+            state.snapBackStartProgress = realProgress
+        }
+
+        if state.isSnappingBack, let startTime = state.snapBackStartTime {
+            let elapsed = currentTime.timeIntervalSince(startTime)
+            let t = min(elapsed / snapBackDuration, 1.0)
+
+            if t >= 1.0 {
+                // Animation complete, resume normal progress
+                state.isSnappingBack = false
+                state.snapBackStartTime = nil
+                displayProgress = realProgress
+            } else {
+                // Ease-out: starts fast, slows at end
+                let easeOut = 1 - pow(1 - t, 2)
+
+                // Animate from 1.0 down toward the current real progress
+                // As t goes 0->1, displayProgress goes 1.0 -> realProgress
+                let targetProgress = realProgress
+                displayProgress = 1.0 - easeOut * (1.0 - targetProgress)
+            }
+        }
+
+        // Update state
+        state.previousProgress = realProgress
+        ringStates[ringIndex] = state
+
+        return displayProgress
+    }
+}
+
 // MARK: - Arced Text View
 
 struct ArcedText: View {
@@ -256,6 +312,7 @@ struct ArcRing: View {
 struct ClockFace: View {
     let date: Date
     let size: CGSize
+    let animationState: ClockAnimationState
 
     private var minDimension: CGFloat {
         min(size.width, size.height)
@@ -284,12 +341,17 @@ struct ClockFace: View {
             ForEach(0..<rings.count, id: \.self) { index in
                 let ring = rings[index]
                 let radius = innerRadius + CGFloat(index) * ringSpacing
+                let displayProgress = animationState.getDisplayProgress(
+                    ringIndex: index,
+                    realProgress: ring.progress,
+                    currentTime: date
+                )
 
                 ArcRing(
                     center: center,
                     radius: radius,
                     strokeWidth: strokeWidth,
-                    progress: ring.progress,
+                    progress: displayProgress,
                     color: ring.color,
                     label: ring.label
                 )
@@ -302,6 +364,7 @@ struct ClockFace: View {
 
 struct PolarClockContentView: View {
     @Environment(\.colorScheme) var colorScheme
+    @StateObject private var animationState = ClockAnimationState()
 
     var body: some View {
         GeometryReader { geometry in
@@ -310,7 +373,11 @@ struct PolarClockContentView: View {
                     (colorScheme == .dark ? Color.black : Color.white)
                         .ignoresSafeArea()
 
-                    ClockFace(date: timeline.date, size: geometry.size)
+                    ClockFace(
+                        date: timeline.date,
+                        size: geometry.size,
+                        animationState: animationState
+                    )
                 }
             }
         }
