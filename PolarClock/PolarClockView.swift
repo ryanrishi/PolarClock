@@ -67,6 +67,18 @@ struct TimeCalculator {
         }
     }
 
+    static let durationFormatter: MeasurementFormatter = {
+        let formatter = MeasurementFormatter()
+        formatter.unitStyle = .long
+        formatter.unitOptions = .providedUnit
+        return formatter
+    }()
+
+    static func formatDuration(_ value: Int, unit: UnitDuration) -> String {
+        let measurement = Measurement(value: Double(value), unit: unit)
+        return durationFormatter.string(from: measurement)
+    }
+
     static func calculateRings(for date: Date) -> [RingData] {
         let calendar = Calendar.current
         let components = calendar.dateComponents([.year, .month, .day, .weekday, .hour, .minute, .second, .nanosecond], from: date)
@@ -94,9 +106,9 @@ struct TimeCalculator {
             RingData(progress: monthProgress, label: monthNames[month - 1], color: ringColors[0]),
             RingData(progress: dayProgress, label: "\(day)\(ordinalSuffix(for: day))", color: ringColors[1]),
             RingData(progress: weekdayProgress, label: weekdayNames[weekday - 1], color: ringColors[2]),
-            RingData(progress: hourProgress, label: "\(hour) hours", color: ringColors[3]),
-            RingData(progress: minuteProgress, label: "\(minute) minutes", color: ringColors[4]),
-            RingData(progress: secondProgress, label: "\(second) seconds", color: ringColors[5])
+            RingData(progress: hourProgress, label: formatDuration(hour, unit: .hours), color: ringColors[3]),
+            RingData(progress: minuteProgress, label: formatDuration(minute, unit: .minutes), color: ringColors[4]),
+            RingData(progress: secondProgress, label: formatDuration(second, unit: .seconds), color: ringColors[5])
         ]
     }
 }
