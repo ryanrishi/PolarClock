@@ -2,6 +2,8 @@
 
 A modern macOS screen saver featuring a polar clock visualization with smooth animations.
 
+Inspired by [pixelbreaker's Polar Clock](https://www.pixelbreaker.com/polarclock).
+
 ![PolarClock demo](PolarClock.gif)
 
 ## Features
@@ -13,6 +15,14 @@ A modern macOS screen saver featuring a polar clock visualization with smooth an
 - Optimized layout for modern MacBooks with notches
 
 ## Installation
+
+### Homebrew (recommended)
+
+```bash
+brew install --cask ryanrishi/tap/polarclock
+```
+
+### Manual
 
 1. Download the latest `.saver` file from [Releases](https://github.com/ryanrishi/PolarClock/releases)
 2. Double-click to install, or manually copy to `~/Library/Screen Savers/`
