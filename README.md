@@ -14,6 +14,14 @@ A modern macOS screen saver featuring a polar clock visualization with smooth an
 
 ## Installation
 
+### Homebrew (recommended)
+
+```bash
+brew install --cask ryanrishi/tap/polarclock
+```
+
+### Manual
+
 1. Download the latest `.saver` file from [Releases](https://github.com/ryanrishi/PolarClock/releases)
 2. Double-click to install, or manually copy to `~/Library/Screen Savers/`
 3. Open System Settings → Screen Saver and select PolarClock
