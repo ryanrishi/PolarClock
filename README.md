@@ -2,6 +2,8 @@
 
 A modern macOS screen saver featuring a polar clock visualization with smooth animations.
 
+Inspired by [pixelbreaker's Polar Clock](https://www.pixelbreaker.com/polarclock).
+
 ![PolarClock demo](PolarClock.gif)
 
 ## Features
