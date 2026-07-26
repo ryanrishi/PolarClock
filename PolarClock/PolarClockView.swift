@@ -1,5 +1,6 @@
 import SwiftUI
 import ScreenSaver
+import AppKit
 
 @objc(PolarClockView)
 class PolarClockScreenSaverView: ScreenSaverView {
@@ -81,9 +82,8 @@ struct TimeCalculator {
 
     static func calculateRings(for date: Date) -> [RingData] {
         let calendar = Calendar.current
-        let components = calendar.dateComponents([.year, .month, .day, .weekday, .hour, .minute, .second, .nanosecond], from: date)
+        let components = calendar.dateComponents([.month, .day, .weekday, .hour, .minute, .second, .nanosecond], from: date)
 
-        let year = components.year ?? 2024
         let month = components.month ?? 1
         let day = components.day ?? 1
         let weekday = components.weekday ?? 1
@@ -169,6 +169,103 @@ class ClockAnimationState: ObservableObject {
     }
 }
 
+// MARK: - Glyph Cache
+
+/// Characters are pre-rasterized so labels can sit at arbitrary sub-pixel offsets.
+/// Drawing `Text` directly snaps each glyph to a device pixel grid, which makes the
+/// slow rings twitch a pixel at a time instead of drifting smoothly.
+enum GlyphCache {
+    /// Glyphs are rasterized larger than they are drawn, so rotating them stays crisp.
+    private static let supersample: CGFloat = 3
+
+    private static var images: [String: NSImage] = [:]
+    private static var advances: [String: CGFloat] = [:]
+
+    private static func font(size: CGFloat) -> NSFont {
+        let systemFont = NSFont.systemFont(ofSize: size, weight: .medium)
+        guard let descriptor = systemFont.fontDescriptor.withDesign(.rounded),
+              let roundedFont = NSFont(descriptor: descriptor, size: size) else {
+            return systemFont
+        }
+        return roundedFont
+    }
+
+    private static func attributes(fontSize: CGFloat) -> [NSAttributedString.Key: Any] {
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.8)
+        shadow.shadowBlurRadius = 2 * supersample
+        shadow.shadowOffset = .zero
+
+        return [
+            .font: font(size: fontSize * supersample),
+            .foregroundColor: NSColor.white,
+            .shadow: shadow
+        ]
+    }
+
+    private static func key(_ character: Character, _ fontSize: CGFloat) -> String {
+        "\(fontSize)|\(character)"
+    }
+
+    static func advance(for character: Character, fontSize: CGFloat) -> CGFloat {
+        let key = key(character, fontSize)
+        if let cached = advances[key] {
+            return cached
+        }
+
+        let attributes: [NSAttributedString.Key: Any] = [.font: font(size: fontSize)]
+        let advance = (String(character) as NSString).size(withAttributes: attributes).width
+        advances[key] = advance
+        return advance
+    }
+
+    static func image(for character: Character, fontSize: CGFloat) -> NSImage? {
+        let key = key(character, fontSize)
+        if let cached = images[key] {
+            return cached
+        }
+
+        let glyph = NSAttributedString(string: String(character), attributes: attributes(fontSize: fontSize))
+        let padding = 4 * supersample
+        let glyphSize = glyph.size()
+        let pixelSize = CGSize(width: ceil(glyphSize.width + padding * 2),
+                               height: ceil(glyphSize.height + padding * 2))
+
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(pixelSize.width),
+            pixelsHigh: Int(pixelSize.height),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return nil
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        glyph.draw(at: CGPoint(x: padding, y: padding))
+        NSGraphicsContext.restoreGraphicsState()
+
+        let image = NSImage(size: CGSize(width: pixelSize.width / supersample,
+                                         height: pixelSize.height / supersample))
+        image.addRepresentation(bitmap)
+        images[key] = image
+        return image
+    }
+
+    /// Angle each character subtends when laid out along a circle of the given radius.
+    static func characterArcs(for text: String, fontSize: CGFloat, radius: CGFloat) -> [CGFloat] {
+        text.map { character in
+            2 * asin(min(advance(for: character, fontSize: fontSize) / (2 * radius), 1))
+        }
+    }
+}
+
 // MARK: - Arced Text View
 
 struct ArcedText: View {
@@ -178,32 +275,6 @@ struct ArcedText: View {
     let endAngle: Double
     let fontSize: CGFloat
 
-    private var characters: [String] {
-        text.map { String($0) }
-    }
-
-    private var font: Font {
-        .system(size: fontSize, weight: .medium, design: .rounded)
-    }
-
-    // Proper chord to arc conversion from Stack Overflow
-    private func chordToArc(_ chord: CGFloat) -> CGFloat {
-        return 2 * asin(chord / (2 * radius))
-    }
-
-    // Calculate arc for each character
-    private var characterArcs: [CGFloat] {
-        characters.map { char in
-            // Approximate character width
-            let charWidth = fontSize * 0.6
-            return chordToArc(charWidth)
-        }
-    }
-
-    private var totalArc: CGFloat {
-        characterArcs.reduce(0, +)
-    }
-
     private var shouldFlip: Bool {
         let normalizedAngle = endAngle.truncatingRemainder(dividingBy: 360)
         let adjustedAngle = normalizedAngle < 0 ? normalizedAngle + 360 : normalizedAngle
@@ -211,53 +282,32 @@ struct ArcedText: View {
         return adjustedAngle > 0 && adjustedAngle < 180
     }
 
-    private func sumOfArcs(upTo index: Int, arcs: [CGFloat]) -> CGFloat {
-        guard index > 0 else { return 0 }
-        return arcs[0..<index].reduce(0, +)
-    }
-
     var body: some View {
-        let arcs = characterArcs // Compute once
+        Canvas { context, _ in
+            let arcs = GlyphCache.characterArcs(for: text, fontSize: fontSize, radius: radius)
+            let endAngleRad = CGFloat(endAngle) * .pi / 180
+            let flip = shouldFlip
 
-        return ZStack {
-            ForEach(0..<characters.count, id: \.self) { index in
-                characterView(at: index, arcs: arcs)
+            // Flipped text reads outward from the arc endpoint; otherwise it ends there
+            var precedingArc: CGFloat = flip ? 0 : -arcs.reduce(0, +)
+
+            for (index, character) in text.enumerated() {
+                let angle = flip
+                    ? endAngleRad - precedingArc - arcs[index] / 2
+                    : endAngleRad + precedingArc + arcs[index] / 2
+                precedingArc += arcs[index]
+
+                guard let glyph = GlyphCache.image(for: character, fontSize: fontSize) else { continue }
+
+                var characterContext = context
+                characterContext.translateBy(
+                    x: center.x + radius * cos(angle),
+                    y: center.y + radius * sin(angle)
+                )
+                characterContext.rotate(by: .radians(angle + (flip ? -.pi / 2 : .pi / 2)))
+                characterContext.draw(context.resolve(Image(nsImage: glyph)), at: .zero, anchor: .center)
             }
         }
-    }
-
-    private func characterView(at index: Int, arcs: [CGFloat]) -> some View {
-        let char = characters[index]
-        let currentArc = arcs[index]
-
-        // Calculate angle for this character
-        let endAngleRad = endAngle * .pi / 180
-
-        // Sum of arcs before this character
-        let previousArcs = sumOfArcs(upTo: index, arcs: arcs)
-
-        let charAngleRad: CGFloat
-        if shouldFlip {
-            // When flipped, position characters going backwards from endAngle
-            charAngleRad = endAngleRad - previousArcs - currentArc / 2
-        } else {
-            // Normal: position characters forwards, ending at endAngle
-            let startAngleRad = endAngleRad - totalArc
-            charAngleRad = startAngleRad + previousArcs + currentArc / 2
-        }
-
-        let x = center.x + radius * cos(charAngleRad)
-        let y = center.y + radius * sin(charAngleRad)
-
-        // Rotation: perpendicular to radius, flip if on bottom
-        let rotation = charAngleRad * 180 / .pi + (shouldFlip ? -90 : 90)
-
-        return Text(char)
-            .font(font)
-            .foregroundColor(.white)
-            .shadow(color: .black.opacity(0.8), radius: 2, x: 0, y: 0)
-            .rotationEffect(.degrees(rotation))
-            .position(x: x, y: y)
     }
 }
 
@@ -276,12 +326,9 @@ struct ArcRing: View {
     }
 
     private var minimumProgress: Double {
-        // Calculate minimum arc length needed to fit the text
-        let charWidth = fontSize * 0.6
-        let estimatedTextWidth = Double(label.count) * charWidth
-        let circumference = 2 * .pi * radius
-        let minimumDegrees = (estimatedTextWidth / circumference) * 360
-        return minimumDegrees / 360
+        // The arc must be at least long enough to fit its label
+        let labelArc = GlyphCache.characterArcs(for: label, fontSize: fontSize, radius: radius).reduce(0, +)
+        return Double(labelArc) / (2 * .pi)
     }
 
     private var displayProgress: Double {
