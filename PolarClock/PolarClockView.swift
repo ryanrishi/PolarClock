@@ -8,7 +8,7 @@ class PolarClockScreenSaverView: ScreenSaverView {
     override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
 
-        let contentView = PolarClockContentView()
+        let contentView = PolarClockContentView(isPreview: isPreview)
         hostingView = NSHostingView(rootView: contentView)
         hostingView?.frame = bounds
         hostingView?.autoresizingMask = [.width, .height]
@@ -17,7 +17,7 @@ class PolarClockScreenSaverView: ScreenSaverView {
             addSubview(hostingView)
         }
 
-        animationTimeInterval = 1.0 / 60.0
+        animationTimeInterval = isPreview ? 1.0 / 30.0 : 1.0 / 60.0
     }
 
     required init?(coder: NSCoder) {
@@ -325,6 +325,7 @@ struct ClockFace: View {
     let date: Date
     let size: CGSize
     let animationState: ClockAnimationState
+    let isPreview: Bool
 
     private var minDimension: CGFloat {
         min(size.width, size.height)
@@ -335,7 +336,8 @@ struct ClockFace: View {
     }
 
     private var strokeWidth: CGFloat {
-        minDimension * 0.04
+        let baseWidth = minDimension * 0.04
+        return isPreview ? max(baseWidth, 2.0) : baseWidth
     }
 
     private var ringSpacing: CGFloat {
@@ -343,7 +345,8 @@ struct ClockFace: View {
     }
 
     private var innerRadius: CGFloat {
-        minDimension * 0.08
+        let baseRadius = minDimension * 0.08
+        return isPreview ? max(baseRadius, 8.0) : baseRadius
     }
 
     var body: some View {
@@ -378,6 +381,12 @@ struct PolarClockContentView: View {
     @Environment(\.colorScheme) var colorScheme
     @StateObject private var animationState = ClockAnimationState()
 
+    let isPreview: Bool
+
+    init(isPreview: Bool = false) {
+        self.isPreview = isPreview
+    }
+
     var body: some View {
         GeometryReader { geometry in
             TimelineView(.animation) { timeline in
@@ -388,7 +397,8 @@ struct PolarClockContentView: View {
                     ClockFace(
                         date: timeline.date,
                         size: geometry.size,
-                        animationState: animationState
+                        animationState: animationState,
+                        isPreview: isPreview
                     )
                 }
             }
