@@ -251,8 +251,10 @@ enum GlyphCache {
         glyph.draw(at: CGPoint(x: padding, y: padding))
         NSGraphicsContext.restoreGraphicsState()
 
-        let image = NSImage(size: CGSize(width: pixelSize.width / supersample,
-                                         height: pixelSize.height / supersample))
+        let logicalSize = CGSize(width: pixelSize.width / supersample,
+                                 height: pixelSize.height / supersample)
+        bitmap.size = logicalSize
+        let image = NSImage(size: logicalSize)
         image.addRepresentation(bitmap)
         images[key] = image
         return image
