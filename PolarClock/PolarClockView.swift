@@ -178,8 +178,19 @@ enum GlyphCache {
     /// Glyphs are rasterized larger than they are drawn, so rotating them stays crisp.
     private static let supersample: CGFloat = 3
 
-    private static var images: [String: NSImage] = [:]
-    private static var advances: [String: CGFloat] = [:]
+    /// Rasterized glyphs cost about 2 MB per font size. The clock draws one size at a
+    /// time, but a resizable window walks through many, so drop them all once a few
+    /// have accumulated.
+    private static let sizeLimit = 4
+
+    private struct Key: Hashable {
+        let character: Character
+        let fontSize: CGFloat
+    }
+
+    private static var images: [Key: NSImage] = [:]
+    private static var advances: [Key: CGFloat] = [:]
+    private static var cachedSizes: Set<CGFloat> = []
 
     private static func font(size: CGFloat) -> NSFont {
         let systemFont = NSFont.systemFont(ofSize: size, weight: .medium)
@@ -203,27 +214,37 @@ enum GlyphCache {
         ]
     }
 
-    private static func key(_ character: Character, _ fontSize: CGFloat) -> String {
-        "\(fontSize)|\(character)"
+    private static func reserve(fontSize: CGFloat) {
+        guard !cachedSizes.contains(fontSize) else { return }
+
+        if cachedSizes.count >= sizeLimit {
+            images.removeAll()
+            advances.removeAll()
+            cachedSizes.removeAll()
+        }
+        cachedSizes.insert(fontSize)
     }
 
+    /// Measured at the rasterized size so that spacing matches the drawn glyphs.
     static func advance(for character: Character, fontSize: CGFloat) -> CGFloat {
-        let key = key(character, fontSize)
+        let key = Key(character: character, fontSize: fontSize)
         if let cached = advances[key] {
             return cached
         }
+        reserve(fontSize: fontSize)
 
-        let attributes: [NSAttributedString.Key: Any] = [.font: font(size: fontSize)]
-        let advance = (String(character) as NSString).size(withAttributes: attributes).width
+        let attributes: [NSAttributedString.Key: Any] = [.font: font(size: fontSize * supersample)]
+        let advance = (String(character) as NSString).size(withAttributes: attributes).width / supersample
         advances[key] = advance
         return advance
     }
 
     static func image(for character: Character, fontSize: CGFloat) -> NSImage? {
-        let key = key(character, fontSize)
+        let key = Key(character: character, fontSize: fontSize)
         if let cached = images[key] {
             return cached
         }
+        reserve(fontSize: fontSize)
 
         let glyph = NSAttributedString(string: String(character), attributes: attributes(fontSize: fontSize))
         let padding = 4 * supersample
