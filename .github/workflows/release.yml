@@ -35,7 +35,7 @@ jobs:
           generate_release_notes: true
 
       - name: Configure git identity
-        uses: Homebrew/actions/git-user-config@master
+        uses: Homebrew/actions/git-user-config@8f3d1ec8a696b3b9d9a6c3696b6c73033cab69e4 # 2026.08.14.1
 
       # TAP_TOKEN needs contents:write and pull-requests:write on ryanrishi/homebrew-tap.
       # The default GITHUB_TOKEN cannot write to another repository.
