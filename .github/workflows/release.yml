@@ -33,3 +33,22 @@ jobs:
         with:
           files: PolarClock.saver.zip
           generate_release_notes: true
+
+      - name: Configure git identity
+        uses: Homebrew/actions/git-user-config@8f3d1ec8a696b3b9d9a6c3696b6c73033cab69e4 # 2026.08.14.1
+
+      # TAP_TOKEN needs contents:write and pull-requests:write on ryanrishi/homebrew-tap.
+      # The default GITHUB_TOKEN cannot write to another repository.
+      - name: Bump the Homebrew cask
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          if [ -z "$HOMEBREW_GITHUB_API_TOKEN" ]; then
+            echo "::error::TAP_TOKEN secret is not set"
+            exit 1
+          fi
+          brew tap ryanrishi/tap
+          brew bump-cask-pr ryanrishi/tap/polarclock \
+            --version="${GITHUB_REF_NAME#v}" \
+            --sha256="$(shasum -a 256 PolarClock.saver.zip | cut -d ' ' -f 1)" \
+            --no-fork
