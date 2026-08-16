@@ -43,6 +43,10 @@ jobs:
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.TAP_TOKEN }}
         run: |
+          if [ -z "$HOMEBREW_GITHUB_API_TOKEN" ]; then
+            echo "::error::TAP_TOKEN secret is not set"
+            exit 1
+          fi
           brew tap ryanrishi/tap
           brew bump-cask-pr ryanrishi/tap/polarclock \
             --version="${GITHUB_REF_NAME#v}" \
